@@ -158,8 +158,8 @@ public class DispatcherServlet extends HttpServlet {
     private void doInstance() throws Exception {
 
         for (String clazzName : classNames) {
-            Class<?> clazz = Class.forName(clazzName);
 
+            Class<?> clazz = Class.forName(clazzName);
             if (clazz.isAnnotationPresent(Controller.class)) {
 
                 Object instance = clazz.newInstance();
