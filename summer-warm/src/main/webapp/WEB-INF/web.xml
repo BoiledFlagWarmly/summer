@@ -8,7 +8,7 @@ http://java.sun.com/xml/ns/j2ee/web-app_2_4.xsd" version="2.4">
         <servlet-class>org.summer.warm.servlet.DispatcherServlet</servlet-class>
         <init-param>
             <param-name>contextConfigLocation</param-name>
-            <param-value>classpath*:application.properties</param-value>
+            <param-value>application.properties</param-value>
         </init-param>
 
         <load-on-startup>1</load-on-startup>

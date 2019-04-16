@@ -1,8 +1,7 @@
 package org.summer.warm.servlet;
 
-import org.summer.warm.annotations.Autowired;
-import org.summer.warm.annotations.Controller;
-import org.summer.warm.annotations.Service;
+import org.summer.warm.HandleMapping;
+import org.summer.warm.annotations.*;
 
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
@@ -12,7 +11,10 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.URL;
 import java.util.*;
 
@@ -24,9 +26,53 @@ public class DispatcherServlet extends HttpServlet {
 
     private Map<String, Object> ioc = new HashMap<>();
 
+    private List<HandleMapping> handleMappings = new ArrayList<>();
+
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         //resp.getWriter().write("404 Not Found!!!");
+        doDispatche(req, resp);
+    }
+
+    private void doDispatche(HttpServletRequest req, HttpServletResponse resp) {
+
+        String requestURL = req.getRequestURL().toString();
+        String contextPath = req.getContextPath();
+        requestURL = requestURL.replace(contextPath, "");
+
+        for(HandleMapping hm:handleMappings){
+            if (!hm.getUrl().equals(requestURL)) continue;
+            try {
+                Method method = hm.getMethod();
+                Class<?>[] parameterTypes = method.getParameterTypes();
+                Annotation[][] parameterAnnotations = method.getParameterAnnotations();
+                Object[] objs = new Object[parameterTypes.length];
+                int i = 0;
+                for(Class<?> parameterType:parameterTypes){
+                    if(parameterType == HttpServletRequest.class){
+                        objs[i++] = req;
+                    }
+                    if(parameterType == HttpServletResponse.class){
+                        objs[i++] = resp;
+                    }
+
+                    for (Annotation[] annotations:parameterAnnotations){
+                        for(Annotation annotation:annotations){
+                            if(annotation.getClass() != RequestParam.class)continue;
+                            String value = ((RequestParam) annotation).value();
+                            Map<String,String> parameterMap = req.getParameterMap();
+                            objs[i++] = parameterMap.get(value);
+                        }
+                    }
+
+                }
+
+                method.invoke(hm.getController(),objs);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
     }
 
     @Override
@@ -55,6 +101,33 @@ public class DispatcherServlet extends HttpServlet {
 
     }
 
+    private void initHandlerMapping() throws ClassNotFoundException {
+
+        for (String className : classNames) {
+            Class<?> clazz = Class.forName(className);
+            if (!clazz.isAnnotationPresent(Controller.class)) continue;
+
+            RequestMapping annotation = clazz.getAnnotation(RequestMapping.class);
+            String controllerUrl = annotation.value();
+
+            Method[] declaredMethods = clazz.getDeclaredMethods();
+            for (Method m : declaredMethods) {
+
+                for (Annotation annotationl : m.getAnnotations()) {
+
+                    if (annotationl.getClass() == RequestMapping.class) {
+                        String methodUrl = ((RequestMapping) annotationl).value();
+                        HandleMapping handleMapping = new HandleMapping();
+                        handleMapping.setUrl(controllerUrl + "/" + methodUrl);
+                        handleMapping.setMethod(m);
+                        handleMapping.setController(ioc.get(clazz.getSimpleName()));
+                        handleMappings.add(handleMapping);
+                    }
+                }
+            }
+        }
+    }
+
     private void doAutowired() {
 
         ioc.forEach((simpleClazzName, obj) -> {
@@ -69,12 +142,12 @@ public class DispatcherServlet extends HttpServlet {
                                 String autoWireValue = fieldAnnotation.value();
 
                                 Object instance = null;
-                                if(!"".equals(autoWireValue)){
+                                if (!"".equals(autoWireValue)) {
                                     instance = ioc.get(autoWireValue);
                                 }
 
                                 try {
-                                    field.set(obj,instance);
+                                    field.set(obj, instance);
                                 } catch (IllegalAccessException e) {
                                     e.printStackTrace();
                                 }
@@ -123,14 +196,15 @@ public class DispatcherServlet extends HttpServlet {
         URL url = this.getClass().getClassLoader().getResource("/" + scanPackage.replaceAll("\\.", "/"));
         File root = new File(url.getFile());
         for (File current : root.listFiles()) {
-            if (!current.isDirectory()) {
-                doScanner(scanPackage + "." + current);
+            if (current.isDirectory()) {
+                doScanner(scanPackage + "." + current.getName());
             } else {
                 if (!current.getName().endsWith(".class")) {
                     continue;
                 }
 
-                classNames.add(current.getName().replaceAll(".class", ""));
+                classNames.add(scanPackage+"."+current.getName().replaceAll(".class", ""));
+
             }
         }
     }
