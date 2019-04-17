@@ -18,7 +18,7 @@ public class DemoController {
     private DemoService demoService;
 
     @RequestMapping("query")
-    public void query(HttpServletRequest req, HttpServletResponse resp,@RequestParam String id){
+    public void query(HttpServletRequest req, HttpServletResponse resp,@RequestParam("id") String id){
         String result = demoService.query(id);
         try {
             resp.getWriter().write(result);

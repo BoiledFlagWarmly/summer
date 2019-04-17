@@ -2,6 +2,7 @@ package org.summer.warm.servlet;
 
 import org.summer.warm.HandleMapping;
 import org.summer.warm.annotations.*;
+import utils.JsonUtils;
 
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
@@ -36,11 +37,10 @@ public class DispatcherServlet extends HttpServlet {
 
     private void doDispatche(HttpServletRequest req, HttpServletResponse resp) {
 
-        String requestURL = req.getRequestURL().toString();
-        String contextPath = req.getContextPath();
-        requestURL = requestURL.replace(contextPath, "");
+        String requestURL = req.getRequestURI();
+        requestURL = requestURL.replace(req.getContextPath(), "");
 
-        for(HandleMapping hm:handleMappings){
+        for (HandleMapping hm : handleMappings) {
             if (!hm.getUrl().equals(requestURL)) continue;
             try {
                 Method method = hm.getMethod();
@@ -48,26 +48,28 @@ public class DispatcherServlet extends HttpServlet {
                 Annotation[][] parameterAnnotations = method.getParameterAnnotations();
                 Object[] objs = new Object[parameterTypes.length];
                 int i = 0;
-                for(Class<?> parameterType:parameterTypes){
-                    if(parameterType == HttpServletRequest.class){
+                for (Class<?> parameterType : parameterTypes) {
+                    if (parameterType == HttpServletRequest.class) {
                         objs[i++] = req;
+                        continue;
                     }
-                    if(parameterType == HttpServletResponse.class){
+                    if (parameterType == HttpServletResponse.class) {
                         objs[i++] = resp;
+                        continue;
                     }
 
-                    for (Annotation[] annotations:parameterAnnotations){
-                        for(Annotation annotation:annotations){
-                            if(annotation.getClass() != RequestParam.class)continue;
+                    for (Annotation[] annotations : parameterAnnotations) {
+                        for (Annotation annotation : annotations) {
+                            if (!(annotation instanceof RequestParam)) continue;
                             String value = ((RequestParam) annotation).value();
-                            Map<String,String> parameterMap = req.getParameterMap();
-                            objs[i++] = parameterMap.get(value);
+                            Map<String, String[]> parameterMap = req.getParameterMap();
+                            objs[i++] = parameterMap.get(value)[0];
                         }
                     }
 
                 }
 
-                method.invoke(hm.getController(),objs);
+                method.invoke(hm.getController(), objs);
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -94,7 +96,7 @@ public class DispatcherServlet extends HttpServlet {
             doAutowired();
             //5、初始化HandlerMapping
             initHandlerMapping();
-            System.out.println("GP Spring framework is init.");
+            System.out.println("Spring framework is init.");
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -112,18 +114,15 @@ public class DispatcherServlet extends HttpServlet {
 
             Method[] declaredMethods = clazz.getDeclaredMethods();
             for (Method m : declaredMethods) {
+                if (!m.isAnnotationPresent(RequestMapping.class)) continue;
 
-                for (Annotation annotationl : m.getAnnotations()) {
-
-                    if (annotationl.getClass() == RequestMapping.class) {
-                        String methodUrl = ((RequestMapping) annotationl).value();
-                        HandleMapping handleMapping = new HandleMapping();
-                        handleMapping.setUrl(controllerUrl + "/" + methodUrl);
-                        handleMapping.setMethod(m);
-                        handleMapping.setController(ioc.get(clazz.getSimpleName()));
-                        handleMappings.add(handleMapping);
-                    }
-                }
+                String methodUrl = m.getAnnotation(RequestMapping.class).value();
+                HandleMapping handleMapping = new HandleMapping();
+                String url = "/" + controllerUrl + "/" + methodUrl;
+                handleMapping.setUrl(url.replaceAll("/+", "/"));
+                handleMapping.setMethod(m);
+                handleMapping.setController(ioc.get(initialToLow(clazz.getSimpleName())));
+                handleMappings.add(handleMapping);
             }
         }
     }
@@ -146,7 +145,12 @@ public class DispatcherServlet extends HttpServlet {
                                     instance = ioc.get(autoWireValue);
                                 }
 
+                                if (instance == null) {
+                                    instance = ioc.get(field.getType().getName());
+                                }
+
                                 try {
+                                    field.setAccessible(true);
                                     field.set(obj, instance);
                                 } catch (IllegalAccessException e) {
                                     e.printStackTrace();
@@ -203,7 +207,7 @@ public class DispatcherServlet extends HttpServlet {
                     continue;
                 }
 
-                classNames.add(scanPackage+"."+current.getName().replaceAll(".class", ""));
+                classNames.add(scanPackage + "." + current.getName().replaceAll(".class", ""));
 
             }
         }

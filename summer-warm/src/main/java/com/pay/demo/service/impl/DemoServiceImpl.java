@@ -7,7 +7,7 @@ import org.summer.warm.annotations.Service;
 public class DemoServiceImpl implements DemoService {
     @Override
     public String query(String id) {
-        return "TOM";
+        return "result = "+id;
     }
 
     @Override
